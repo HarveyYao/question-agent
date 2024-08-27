@@ -220,8 +220,9 @@ def main():
                 output_df = gr.Dataframe(
                     headers=["序号", "问题", "类型", "难度", "选项", "学科"],
                     type="pandas",
-                    column_widths=[50, 300, 100, 100, 300, 100],
+                    column_widths=[80, 300, 80, 80, 300, 80],
                     wrap=True,
+
                     label="错题列表"
                 )
             review_button.click(fn=review_question, inputs=input_dropdown, outputs=output_df)
