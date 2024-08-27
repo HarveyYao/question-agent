@@ -54,7 +54,18 @@ def identifiy_question(question_image):
 
 
 def classify_question(question_text):
-    logger.info("智能体开始分类题目... ...")
+    """
+    整理问题，根据问题文本的内容，判断问题的学科及其它问题信息
+
+    参数:
+    question_text (str): 用户提出的问题文本。
+
+    返回:
+    question_detail： 整理后的问题详情。
+
+    """
+
+    logger.info("智能体开始整理分类题目... ...")
     classify_question_prompt_template = """
     你是一个试卷问题智能助手，现在需要你判断下面的这个问题： {question} 属于什么学科。
     学科的范围为: ["语文", "数学", "英语", "物理", "化学", "生物", "历史", "地理", "其它"]，
@@ -81,26 +92,31 @@ def classify_question(question_text):
     for key, value in data.items():
         setattr(question_detail, key, value)
 
-    logger.info("智能体结束分类题目... ...")
+    logger.info("智能体结束整理分类题目... ...")
     return question_detail
 
 
 def store_question(question_detail):
-    answers = json.dumps(question_detail.answers, ensure_ascii=False)
-    db_helper = QuestionDBHelper()
-    # 插入一条新问题
-    db_helper.insert_question(
-        text=question_detail.text,
-        question_type=question_detail.question_type,
-        difficulty=question_detail.difficulty,
-        answers=answers,
-        subject=question_detail.subject
-    )
+    """
+    将问题存储到数据库中。
 
+    本函数负责将问题详情（包括问题文本、类型、难度、答案及科目）存储到数据库中。
+    它首先将答案序列化为JSON格式的字符串，然后通过数据库助手插入问题。
 
-def store_question(question_detail):
+    参数:
+    - question_detail: 问题详情对象，包含问题的所有必要信息。
+
+    返回值:
+    无
+
+    重要性说明:
+    本函数对于持久化问题信息至关重要，确保问题及其相关答案能被正确存储，
+    以便后续检索和使用。
+    """
     logger.info("智能体开始储存题目... ...")
+    # 将问题答案序列化为JSON格式的字符串，确保非ASCII字符不受影响
     answers = json.dumps(question_detail.answers, ensure_ascii=False)
+    # 创建数据库助手实例，用于操作问题数据库
     db_helper = QuestionDBHelper()
     # 插入一条新问题
     db_helper.insert_question(
@@ -114,36 +130,77 @@ def store_question(question_detail):
 
 
 def review_question(subject):
+    """
+    根据科目回顾错题。
+
+    此函数的目的是从数据库中检索指定科目下的所有错题，并将这些错题信息整理成DataFrame格式以便进一步处理。
+
+    参数:
+    - subject (str): 需要回顾错题的科目。
+
+    返回:
+    - DataFrame: 包含所有错题信息的DataFrame，列包括'序号', '问题', '类型', '难度', '选项', '学科'。
+    """
+    # 日志记录，表示智能体开始回顾错题
     logger.info("智能体开始回顾错题... ...")
+
+    # 初始化数据库助手对象，用于操作题目数据库
     db_helper = QuestionDBHelper()
+
+    # 通过数据库助手从数据库中获取指定科目的所有错题
     questions = db_helper.get_questions_by_subject(subject)
-    # 将查询结果转换为DataFrame
+
+    # 将查询结果转换为DataFrame，以便于查看和操作
     columns = ["序号", "问题", "类型", "难度", "选项", "学科"]
     data = pd.DataFrame(questions, columns=columns)
 
+    # 日志记录，表示智能体结束回顾错题
     logger.info("智能体结束回顾错题... ...")
+
+    # 返回整理后的错题DataFrame
     return pd.DataFrame(data)
 
 
 def enhance_question(selected_index: gr.SelectData, dataframe_origin):
+    """
+    根据选定的表格行的问题，出同类的题目用于巩固。
+
+    参数:
+    - selected_index (gr.SelectData): 选定的表格行。
+
+    返回:
+    - str: 返回用于巩固的新题目。
+    """
+
+    # 使用日志记录错题巩固的开始
     logger.info("智能体开始错题巩固... ...")
-    # return f"{selected_index.row_value}."
+
+    # 提取错题文本
     err_question_text = selected_index.row_value
+
+    # 初始化增强模型，用于生成类似错题
     enhance_model = ChatOllama(
         base_url="http://localhost:11434",
         temperature=0.8,
         model=model_name
     )
+
+    # 定义Prompt模板，指导模型基于错题生成新题目
     before_rag_template = "请参加这道题目（ {err_question_text} )的内容， 出1道同类的题目.如果你不知道答案，就回答不知道，不要试图编造答案。"
     before_rag_prompt = ChatPromptTemplate.from_template(before_rag_template)
+
+    # 构建链式调用，将错题文本传递给模型以生成新题目
     after_rag_chain = (
             {"err_question_text": RunnablePassthrough()}
             | before_rag_prompt
             | enhance_model
             | StrOutputParser()
     )
+
+    # 使用日志记录错题巩固的结束
     logger.info("智能体结束错题巩固... ...")
 
+    # 调用链式结构，传入错题文本，返回生成的题目
     return after_rag_chain.invoke(err_question_text)
 
 
@@ -203,7 +260,7 @@ def main():
     with gr.Blocks() as his_page:
         gr.Markdown(
             """
-            # 错题回顾智能体
+            # 错题回顾
             选择科目，智能体会根据你选择的科目，从数据库中读取错题，并展示错题列表。
             """)
         with gr.Column():
