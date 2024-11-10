@@ -28,7 +28,7 @@ console_handler.setFormatter(ColorFormatter())
 # 将控制台handler添加到logger
 logger.addHandler(console_handler)
 
-model_name = 'qwen2:7b'
+model_name = 'qwen2.5:3b'
 chat_model = ChatOllama(
     base_url="http://localhost:11434",
     temperature=0,
@@ -76,7 +76,7 @@ def classify_question(question_text):
         difficulty -- 问题的难度级别
         answers -- 问题的正确答案
         subject -- 问题所属的科目或主题
-    最终的输出格式严格控制为Json格式，Json字符串外面不能有其它内容。
+    最终的输出格式严格控制为Json格式的字符串，Json字符串外面不能有其它内容，也不能是Markdown格式。
     """
     classify_question_prompt = ChatPromptTemplate.from_template(classify_question_prompt_template)
     classify_question_chain = (
@@ -85,9 +85,9 @@ def classify_question(question_text):
             | chat_model
             | StrOutputParser()
     )
-    question_detail = QuestionDetails
     result = classify_question_chain.invoke(question_text)
     logger.debug("题目分类信息：\n=============\n" + result + "\n=============\n")
+    question_detail = QuestionDetails
     data = json.loads(result)
     for key, value in data.items():
         setattr(question_detail, key, value)
@@ -143,20 +143,15 @@ def review_question(subject):
     """
     # 日志记录，表示智能体开始回顾错题
     logger.info("智能体开始回顾错题... ...")
-
     # 初始化数据库助手对象，用于操作题目数据库
     db_helper = QuestionDBHelper()
-
     # 通过数据库助手从数据库中获取指定科目的所有错题
     questions = db_helper.get_questions_by_subject(subject)
-
     # 将查询结果转换为DataFrame，以便于查看和操作
     columns = ["序号", "问题", "类型", "难度", "选项", "学科"]
     data = pd.DataFrame(questions, columns=columns)
-
     # 日志记录，表示智能体结束回顾错题
     logger.info("智能体结束回顾错题... ...")
-
     # 返回整理后的错题DataFrame
     return pd.DataFrame(data)
 
@@ -287,7 +282,7 @@ def main():
 
     his_page.description = "选择科目，智能体会根据你选择的科目，从数据库中读取错题，并展示错题列表。"
     tabbed_interface = gr.TabbedInterface([index_page, his_page], ["错题解析", "错题回顾"])
-    tabbed_interface.launch(share=True)
+    tabbed_interface.launch()
 
 
 # 运行测试用例
