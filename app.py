@@ -5,6 +5,7 @@ import gradio as gr
 import pandas as pd
 import pytesseract
 from langchain_community.chat_models import ChatOllama
+from langchain_community.chat_models.tongyi import ChatTongyi
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
@@ -29,12 +30,17 @@ console_handler.setFormatter(ColorFormatter())
 logger.addHandler(console_handler)
 
 model_name = 'qwen2.5:3b'
-chat_model = ChatOllama(
-    base_url="http://localhost:11434",
-    temperature=0,
-    model=model_name
-)
+# chat_model = ChatOllama(
+#     base_url="http://localhost:11434",
+#     temperature=0,
+#     model=model_name
+# )
 
+chat_model = ChatTongyi(
+    model="qwen-max",
+    api_key="sk-92b66090648943d19ca224f18f7b01d9",
+    temperature=0
+)
 
 def identifiy_question(question_image):
     """
@@ -174,10 +180,16 @@ def enhance_question(selected_index: gr.SelectData, dataframe_origin):
     err_question_text = selected_index.row_value
 
     # 初始化增强模型，用于生成类似错题
-    enhance_model = ChatOllama(
-        base_url="http://localhost:11434",
-        temperature=0.8,
-        model=model_name
+    # enhance_model = ChatOllama(
+    #     base_url="http://localhost:11434",
+    #     temperature=0.8,
+    #     model=model_name
+    # )
+
+    enhance_model = ChatTongyi(
+        model="qwen-max",
+        api_key="sk-92b66090648943d19ca224f18f7b01d9",
+        temperature=0.8
     )
 
     # 定义Prompt模板，指导模型基于错题生成新题目
