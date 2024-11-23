@@ -29,7 +29,7 @@ console_handler.setFormatter(ColorFormatter())
 # 将控制台handler添加到logger
 logger.addHandler(console_handler)
 
-model_name = 'qwen2.5:3b'
+# model_name = 'qwen2.5:3b'
 # chat_model = ChatOllama(
 #     base_url="http://localhost:11434",
 #     temperature=0,
@@ -53,12 +53,27 @@ def identifiy_question(question_image):
     question_text: 从图像中提取的错题文本。
     """
     logger.info("智能体开始识别题目... ...")
-    question_text = pytesseract.image_to_string(question_image, lang='chi_sim+eng')
+    # question_text = pytesseract.image_to_string(question_image, lang='chi_sim+eng')
+    question_text = identifiy_question_by_vl(question_image)
+
     logger.debug("从图像中提取的题目文本如下：\n=============\n" + question_text + "\n=============\n")
     logger.info("智能体结束识别题目... ...")
     return question_text
 
-
+def identifiy_question_by_vl(question_image):
+    image_path = f"file://{question_image}"
+    messages = [{'role': 'system',
+                 'content': [{'text': '你是试卷和题目识别智能体.'}]},
+                 {'role':'user',
+                  'content': [{'image': image_path},
+                              {'text': '识别图片中的文本'}]}]
+    from dashscope import MultiModalConversation
+    from http import HTTPStatus
+    response = MultiModalConversation.call(model='qwen-vl-max', messages=messages)
+    if response.status_code == HTTPStatus.OK:
+        return response.output.choices[0].message.content[0]['text']
+    else:
+        return ""
 def classify_question(question_text):
     """
     整理问题，根据问题文本的内容，判断问题的学科及其它问题信息
@@ -154,7 +169,7 @@ def review_question(subject):
     # 通过数据库助手从数据库中获取指定科目的所有错题
     questions = db_helper.get_questions_by_subject(subject)
     # 将查询结果转换为DataFrame，以便于查看和操作
-    columns = ["序号", "问题", "类型", "难度", "选项", "学科"]
+    columns = ["序号", "题目", "题型", "难度", "答案", "学科"]
     data = pd.DataFrame(questions, columns=columns)
     # 日志记录，表示智能体结束回顾错题
     logger.info("智能体结束回顾错题... ...")
@@ -177,7 +192,9 @@ def enhance_question(selected_index: gr.SelectData, dataframe_origin):
     logger.info("智能体开始错题巩固... ...")
 
     # 提取错题文本
-    err_question_text = selected_index.row_value
+    err_question_text = selected_index.row_value[1]
+    logger.debug("当前选择的需要的历史错题：\n=============\n" + err_question_text + "\n=============\n")
+
 
     # 初始化增强模型，用于生成类似错题
     # enhance_model = ChatOllama(
@@ -189,7 +206,7 @@ def enhance_question(selected_index: gr.SelectData, dataframe_origin):
     enhance_model = ChatTongyi(
         model="qwen-max",
         api_key="sk-92b66090648943d19ca224f18f7b01d9",
-        temperature=0.8
+        top_p=1
     )
 
     # 定义Prompt模板，指导模型基于错题生成新题目
@@ -204,11 +221,14 @@ def enhance_question(selected_index: gr.SelectData, dataframe_origin):
             | StrOutputParser()
     )
 
-    # 使用日志记录错题巩固的结束
-    logger.info("智能体结束错题巩固... ...")
 
     # 调用链式结构，传入错题文本，返回生成的题目
-    return after_rag_chain.invoke(err_question_text)
+    new_question = after_rag_chain.invoke(err_question_text)
+    logger.debug("通过大模型生成的的同类新题：\n=============\n" + new_question + "\n=============\n")
+
+    # 使用日志记录错题巩固的结束
+    logger.info("智能体结束错题巩固... ...")
+    return new_question
 
 
 def process_question(question_image, query):
@@ -246,7 +266,7 @@ def main():
     index_page = gr.Interface(
         fn=process_question,
         inputs=[
-            gr.Image(label="错题图片", height=250),
+            gr.Image(label="错题图片", height=250, type="filepath"),
             gr.Textbox(value="请给出问题的描述及正确选项，并给出解题思路", placeholder="需要智能体做什么...",
                        label="指令")
         ],
@@ -282,11 +302,12 @@ def main():
             gr.Markdown("点击错题列表，智能体将自动给出与选中题目知识点相近的题目，帮助你巩固同类题型。")
             with gr.Row():
                 output_df = gr.Dataframe(
-                    headers=["序号", "问题", "类型", "难度", "选项", "学科"],
+                    headers=["序号", "题目", "类型", "难度", "答案", "学科"],
                     type="pandas",
                     column_widths=[80, 300, 80, 80, 300, 80],
                     wrap=True,
-
+                    row_count=(1, "dynamic"),
+                    col_count=(6, "fixed"),
                     label="错题列表"
                 )
             review_button.click(fn=review_question, inputs=input_dropdown, outputs=output_df)
